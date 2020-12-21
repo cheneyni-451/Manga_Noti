@@ -1,40 +1,113 @@
 from bs4 import BeautifulSoup
-# import json
+# from email.message import EmailMessage
+from getpass import getpass
+import json
 import requests
 import signal
+import smtplib
+import ssl
 import sys
 import time
 
 
-def kill_handler(sig, frame):
-    # save data to json file
-    sys.exit(0)
+class MangaNotifier:
+    save_data_fname = 'save_data.json'
+
+    def __init__(self):
+        self.smtp_server = 'smtp.gmail.com'
+        self.port = 587  # for starttls
+        self.sender_email = 'notifiermanga@gmail.com'
+        self.receiver_email = 'cheneyrocks12@gmail.com'
+        self.password = getpass()
+
+        # Create a secure SSL context
+        self.context = ssl.create_default_context()
+
+        try:
+            server = smtplib.SMTP(self.smtp_server, self.port)
+            server.starttls(context=self.context)  # Secure the connection
+            while True:
+                try:
+                    server.login(self.sender_email, self.password)
+                    break
+                except smtplib.SMTPAuthenticationError:
+                    print("Wrong Password")
+                    self.password = getpass()
+        except Exception as e:
+            print(e)
+        finally:
+            server.quit()
+
+
+        self.url_list = [
+            'https://manganelo.com/manga/dnha19771568647794',  # Tensei Shitara Slime Datta Ken
+            'https://manganelo.com/manga/pn918005'  # Solo Leveling
+        ]
+        self.prev_chapters = dict()
+
+        with open(MangaNotifier.save_data_fname, 'a+') as fin:
+            fin.seek(0)
+            data = fin.readline()
+            if data:
+                self.prev_chapters = json.loads(data)
+
+    def run(self):
+        while True:
+            for url in self.url_list:
+                req = requests.get(url)
+                data = req.text
+
+                soup = BeautifulSoup(data, 'html.parser')
+                manga_title = soup.h1.string
+                print(manga_title)
+                chapter_list = soup.find('ul', class_='row-content-chapter')
+                latest_chapter = chapter_list.li
+
+                prev_chapter_title = ''
+                if manga_title in self.prev_chapters:
+                    prev_chapter_title = self.prev_chapters[manga_title]
+
+                chapter_title = latest_chapter.a.string
+                if chapter_title != prev_chapter_title:
+                    # send notification
+                    self.prev_chapters[manga_title] = chapter_title
+
+                    chapter_url = latest_chapter.a.get('href')
+                    self.send_noti(manga_title, chapter_title, chapter_url)
+                print(chapter_title)
+
+            time.sleep(5)  # 12 hours
+
+    def kill_handler(self, sig, frame):
+        # save data to json file
+        with open(MangaNotifier.save_data_fname, 'w') as fout:
+            json.dump(self.prev_chapters, fout)
+        sys.exit(0)
+
+    def send_noti(self, manga_title, chap_title, chap_url):
+        # Try to log in to server and send email
+        try:
+            server = smtplib.SMTP(self.smtp_server, self.port)
+            # server.ehlo()  # Can be omitted
+            server.starttls(context=self.context)  # Secure the connection
+            # server.ehlo()  # Can be omitted
+            server.login(self.sender_email, self.password)
+            # TODO: Send email here
+            message = """
+            A new chapter of {}: {} just came out. {}""".format(manga_title, chap_title, chap_url)
+            server.sendmail(self.sender_email, self.receiver_email, message)
+        except Exception as e:
+            # Print any error messages to stdout
+            print(e)
+        finally:
+            server.quit()
 
 
 def main():
-    url_list = [
-        'https://manganelo.com/manga/dnha19771568647794',  # Tensei Shitara Slime Datta Ken
-        'https://manganelo.com/manga/pn918005'  # Solo Leveling
-    ]
-    signal.signal(signal.SIGTERM, kill_handler)
+    manga_noti = MangaNotifier()
+    signal.signal(signal.SIGTERM, manga_noti.kill_handler)
 
-    while True:
-        for url in url_list:
-            req = requests.get(url)
-            data = req.text
-
-            soup = BeautifulSoup(data, 'html.parser')
-            chapter_list = soup.find('ul', class_='row-content-chapter')
-            latest_chapter = chapter_list.li
-
-            prev_chapter_title = ''
-            chapter_title = latest_chapter.a.string
-            if chapter_title != prev_chapter_title:
-                # send notification
-                prev_chapter_title = chapter_title
-            print(chapter_title)
-
-        time.sleep(5)  # 12 hours
+    manga_noti.run()
 
 
 if __name__ == '__main__':
