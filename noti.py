@@ -1,5 +1,4 @@
 from bs4 import BeautifulSoup
-# from email.message import EmailMessage
 from getpass import getpass
 import json
 import requests
@@ -9,35 +8,17 @@ import ssl
 import sys
 import time
 
+import emailer
+
 
 class MangaNotifier:
     save_data_fname = 'save_data.json'
 
     def __init__(self):
-        self.smtp_server = 'smtp.gmail.com'
-        self.port = 587  # for starttls
         self.sender_email = 'notifiermanga@gmail.com'
         self.receiver_email = 'cheneyrocks12@gmail.com'
-        self.password = getpass()
 
-        # Create a secure SSL context
-        self.context = ssl.create_default_context()
-
-        try:
-            server = smtplib.SMTP(self.smtp_server, self.port)
-            server.starttls(context=self.context)  # Secure the connection
-            while True:
-                try:
-                    server.login(self.sender_email, self.password)
-                    break
-                except smtplib.SMTPAuthenticationError:
-                    print("Wrong Password")
-                    self.password = getpass()
-        except Exception as e:
-            print(e)
-        finally:
-            server.quit()
-
+        self.service = emailer.start_mail_service()
 
         self.url_list = [
             'https://manganelo.com/manga/dnha19771568647794',  # Tensei Shitara Slime Datta Ken
@@ -76,7 +57,7 @@ class MangaNotifier:
                     self.send_noti(manga_title, chapter_title, chapter_url)
                 print(chapter_title)
 
-            time.sleep(5)  # 12 hours
+            time.sleep(10)  # 12 hours
 
     def kill_handler(self, sig, frame):
         # save data to json file
@@ -85,22 +66,10 @@ class MangaNotifier:
         sys.exit(0)
 
     def send_noti(self, manga_title, chap_title, chap_url):
-        # Try to log in to server and send email
-        try:
-            server = smtplib.SMTP(self.smtp_server, self.port)
-            # server.ehlo()  # Can be omitted
-            server.starttls(context=self.context)  # Secure the connection
-            # server.ehlo()  # Can be omitted
-            server.login(self.sender_email, self.password)
-            # TODO: Send email here
-            message = """
-            A new chapter of {}: {} just came out. {}""".format(manga_title, chap_title, chap_url)
-            server.sendmail(self.sender_email, self.receiver_email, message)
-        except Exception as e:
-            # Print any error messages to stdout
-            print(e)
-        finally:
-            server.quit()
+        msg = emailer.create_message('me', self.receiver_email,
+                                     "New {title} Chapter".format(title=manga_title),
+                                     "{}: {} just came out! {}".format(manga_title, chap_title, chap_url))
+        emailer.send_message(self.service, 'me', msg)
 
 
 def main():
