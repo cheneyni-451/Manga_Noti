@@ -27,17 +27,19 @@ class MangaNotifier:
         # ]
         self.url_list = []
         self.prev_chapters = dict()
-
-        with open(MangaNotifier.save_file, 'a+') as fin:
-            fin.seek(0)
-            data = fin.readline()
-            if data:
-                self.prev_chapters = json.loads(data)
+        try:
+            with open(MangaNotifier.save_file, 'r') as fin:
+                data = fin.readline()
+                if data:
+                    self.prev_chapters = json.loads(data)
+        except IOError as error:
+            print(error)
 
     def run(self):
         self.get_sources()
         while True:
             i = 0
+            updated = False
             while i < len(self.url_list):
                 url = self.url_list[i].strip()
                 try:
@@ -62,11 +64,13 @@ class MangaNotifier:
                     prev_chapter_title = self.prev_chapters[manga_title]
 
                 if chapter_title != prev_chapter_title:
+                    updated = True
                     # send notification
                     self.prev_chapters[manga_title] = chapter_title
                     self.send_noti(manga_title, chapter_title, chapter_url)
                 i += 1
-
+            if updated:
+                self.save_chapters(self.prev_chapters)
             time.sleep(3600)  # 1 hour
 
     @staticmethod
@@ -85,6 +89,13 @@ class MangaNotifier:
         chapter_url = latest_chapter.a.get('href')
 
         return manga_title, chapter_title, chapter_url
+
+    def save_chapters(self, chapters):
+        try:
+            with open(MangaNotifier.save_file, 'w') as fout:
+                fout.write(json.dumps(chapters))
+        except json.JSONDecodeError as error:
+            print(error)
 
     def get_sources(self):
         try:
