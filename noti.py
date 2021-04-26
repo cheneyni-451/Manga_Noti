@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import json
 import re
 import signal
@@ -5,6 +7,7 @@ import sys
 import time
 
 import emailer
+import google.auth.exceptions
 import requests
 from bs4 import BeautifulSoup
 
@@ -15,8 +18,13 @@ class MangaNotifier:
     def __init__(self):
         self.sender_email = 'notifiermanga@gmail.com'
         self.receiver_email = 'cheneyrocks12@gmail.com'
-
-        self.service = emailer.start_mail_service()
+        self.service = None
+        while self.service is None:
+            try:
+                self.service = emailer.start_mail_service()
+            except google.auth.exceptions.GoogleAuthError as error:
+                print(error, file=sys.stderr)
+                time.sleep(1)
 
         # self.url_list = [
         #     'https://manganelo.com/manga/dnha19771568647794',  # Tensei Shitara Slime Datta Ken
@@ -51,7 +59,6 @@ class MangaNotifier:
 
                 source = MangaNotifier.get_site(url)
 
-                manga_title = chapter_title = chapter_url = ''
                 if source == 'manganelo.com':
                     manga_title, chapter_title, chapter_url = MangaNotifier.parse_manganelo(soup)
                 else:
